@@ -1,123 +1,78 @@
-import torchvision, torch
-from sklearn.model_selection import train_test_split
-from torchvision import transforms
-from torch.utils.data import Dataset, random_split
-from torch.utils.data import Dataset, DataLoader
-
+import random
+import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torchvision import datasets, transforms
-import matplotlib.pyplot as plt
+from torch.utils.data import Dataset, random_split, DataLoader
+import torchvision
+import torchvision.transforms as transforms
 import numpy as np
+import matplotlib
 
-# FNN Class
+
+# Set hyperparameters
+color_channels = 3 # 3 color channels for RGB
+image_side_length  = 64 # images are size 64 squares
+input_size = image_side_length * image_side_length # 64x64 pixel images
+hidden_size = 100 # number of nodes in hidden layer
+num_classes = 5 # number of classes, 0-4
+num_epochs = 2 # number of times to loop through the entire dataset
+batch_size = 100 # number of samples in one pass
+learning_rate = 0.001 # learning rate
+
+#A1.1) Set a static global random seed
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.maunal_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+set_seed(42)
+
+# Define transform to convert PIL image to Tensor
+transform = transforms.ToTensor()
+
+#A1.2) Build the dataset and split it
+data = torchvision.datasets.FakeData(100, (color_channels, input_size, input_size), num_classes, transform=transform)
+
+# split data 70/15/15
+train_data, val_data, test_data = random_split(data, [.7, .15, .15])
+
+#A1.3) Create Dataloaders (train/val/test)
+train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+val_dataloader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+
+#A2) Model Family
+"""
+@num_hl - number of hidden layers in NN, should be 1, 3 or 5
+@hidden_dim - number of nodes in each hidden layer
+@input_dim - size of input images
+@num_classes - number of classes to be output by the final layer of the model
+@dropout - percent of nodes to be dropped in each hidden layer to reduce overfitting, defaults to 0, should be 0.4 otherwise
+"""
 class FNN(nn.Module):
-    def __init__(self, num_h, hidden, dropout):
-        super(FNN, self).__init__()
+    def __init__(self, num_hl, hidden_dim, input_dim, num_classes, dropout=0.0):
+        super(FNN,self).__init__()
         
-        # First hidden layer, use 3 channel (RGB) 64x64 pixel image to produce 512 features
-        self.fc1 = nn.Linear(3* 64 * 64, 512)
-        # Second hidden layer uses 512 features from first layer to produce 5 output classes
-        self.fc2 = nn.Linear(512, 5)
+        # Define function for flattening tensors to 1D 
+        self.flatten = nn.Flatten()
+        # List to hold variable-amount of hidden layers 1/3/5
+        layers = []
         
-    def forward(self, x):
-        # Flatten 2D images into 1D vectors
-        # -1 indicates infer the shape from batch_size
-        x = x.view(-1, 3* 64 * 64)
+        # First hidden layer
+        # Convert input features to dimensions of hidden layers
+        layers.append(nn.Linear(input_dim, hidden_dim))
+        # Apply ReLU activation function to set values <0 to 0, capturing non-linear patterns
+        layers.append(nn.ReLU())
         
-        # Pass flattened input through first layer
-        # Linear conversion of 784 input features to 512 specified features
-        # Apply RELU to 512 features
-        x = F.relu(self.fc1(x))
+        # Apply dropout to first layer if parameter > 0
+        if dropout > 0:
+            layers.append(nn.Dropout(dropout))
         
-        # Pass first layer output through second layer
-        # Linear transformation of 512 input features to 5 specified features
-        x = self.fc2(x)
+        # Additional hidden layers (for num_hl = 3 or 5)
+        for _ in range(num_hl - 1):
+            # transfer neurons from previous layer to current layer
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+            # Apply ReLU activation function to current layer
+            
         
-        return x
-    
-def accuracy(outputs, labels):
-    _, preds = torch.max(outputs, 1)
-    return torch.sum(preds == labels).item() / len(labels)
-
-
-def train(model, device, train_loader, criterion, optimizer, epoch):
-    model.train()
-    running_loss = 0.0
-    running_acc = 0.0
-    for i, (inputs, labels) in enumerate(train_loader):
-        inputs, labels = inputs.to(device), labels.to(device)
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-
-        running_loss += loss.item()
-        running_acc += accuracy(outputs, labels)
-        if (i + 1) % 200 == 0:
-            print(
-                f'Epoch {epoch}, Batch {i+1}, Loss: {running_loss / 200:.4f}, Accuracy: {running_acc / 200:.4f}')
-            running_loss = 0.0
-            running_acc = 0.0
-
-
-def test(model, device, test_loader, criterion):
-    model.eval()
-    test_loss = 0.0
-    test_acc = 0.0
-    with torch.no_grad():
-        for inputs, labels in test_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            test_loss += loss.item()
-            test_acc += accuracy(outputs, labels)
-    print(
-        f'Test Loss: {test_loss / len(test_loader):.4f}, Test Accuracy: {test_acc / len(test_loader):.4f}')
-
-def main():
-    global_random_seed = torch.seed()
-
-    # Define transform to convert PIL image to Tensor
-    transform = transforms.ToTensor()
-
-    # Generate dataset
-    data = torchvision.datasets.FakeData(100, (3, 64, 64), 5, transform=transform)
-    # print(data)
-
-    # Split data into train, test and validation sets
-    train_data, test_data, val_data = random_split(data, [0.6, 0.2, 0.2])
-    # print(len(train_data))
-    # print(len(test_data))
-    # print(len(val_data))
-
-
-    # Set hyperparameters
-    batch_size = 20
-    num_epochs = 10
-    learning_rate = 0.01   
-
-    # Create dataloaders in batch sizes of 20 images    
-    train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
-    val_dataloader = DataLoader(val_data, batch_size=batch_size, shuffle=True)
-
-    # Display batch shapes and labels
-    # for batch_images, batch_labels in train_dataloader:
-    #     print(f"Batch shape: {batch_images.shape}, Labels: {batch_labels}")
-
-    # Create model and set device, loss function and optimizer
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = FNN(1, 1, 1).to(device)
-    
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate)
-    
-    for epoch in range(1, num_epochs + 1):
-        train(model, device, train_dataloader, criterion, optimizer, epoch)
-        test(model, device, test_dataloader, criterion)
-
-if __name__ == '__main__':
-    main()
