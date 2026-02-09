@@ -18,6 +18,7 @@ num_epochs = 2 # number of times to loop through the entire dataset
 batch_size = 100 # number of samples in one pass
 learning_rate = 0.001 # learning rate
 
+
 #A1.1) Set a static global random seed
 def set_seed(seed):
     random.seed(seed)
@@ -74,5 +75,25 @@ class FNN(nn.Module):
             # transfer neurons from previous layer to current layer
             layers.append(nn.Linear(hidden_dim, hidden_dim))
             # Apply ReLU activation function to current layer
+            layers.append(nn.ReLU())
             
+            # Apply dropout to current layer if >0
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
         
+        # Output layer
+        layers.append(nn.Linear(hidden_dim, num_classes))
+        
+        # Register all previous layers
+        self.network = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        # Convert multidimensional input images to 1d 
+        x = self.flatten(x)
+        
+        # Compute logits by applying all layers of network to flattened input
+        logits = self.network(x)
+        
+        return logits
+    
+M1 = FNN( 1, hidden_size, input_size * color_channels, num_classes, 0.0)
