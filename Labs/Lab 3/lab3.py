@@ -292,6 +292,7 @@ def generate_table(train_metrics, model_name):
     epochs = list(range(1,len(train_metrics["train_accuracy"])+1))
 
     # create dataframe using metric values and model name
+    # metrics rounded to 3f for readablility
     df = pd.DataFrame({
         'epoch': epochs,
         model_name + '_train_loss': train_metrics["train_loss"],
@@ -299,6 +300,8 @@ def generate_table(train_metrics, model_name):
         model_name + '_train_accuracy': train_metrics["train_accuracy"],
         model_name + '_val_accuracy': train_metrics["val_accuracy"],
         })
+    
+    df = df.round(3)
     
     return df
 
@@ -378,11 +381,18 @@ def main():
     m4_table = generate_table(m4_res, "M4")
 
     # Join tables to and drop epoch per table so all row values will be in terms of a single epoch
-    frames = [m1_table, m2_table.drop("epoch", axis=1), m3_table.drop("epoch", axis=1), m4_table.drop("epoch", axis=1)]
-    result_table = pd.concat(frames, axis=1)
-    print(result_table)
+    frames = [m1_table, m2_table, m3_table, m4_table]
 
-    result_table.to_csv("out.csv", index=False)
+    # print and export each model's result as a table
+    for idx, table in enumerate(frames):
+        print(table)
+        table.to_csv(f"out{idx}.csv", index=False)
+
+    # combine all results into one table
+    # drop duplicate epoch columns
+    frames_dropped = [m1_table, m2_table.drop("epoch", axis=1), m3_table.drop("epoch", axis=1), m4_table.drop("epoch", axis=1)]
+    result_table = pd.concat(frames_dropped, axis=1)
+    # print(result_table)
     
 if __name__ == "__main__":
     main()
