@@ -195,7 +195,7 @@ def train_model(model, train_loader, val_loader, optimizer, loss_fn, epochs):
                 val_total += labels.size(0)
 
         # calculate validation loss and accuracy
-        val_loss = current_loss / val_current_loss
+        val_loss = val_current_loss / val_total
         val_acc = val_correct / val_total
 
         report_metrics["train_loss"].append(train_loss)
