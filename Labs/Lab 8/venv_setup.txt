@@ -1,0 +1,1 @@
+pip install "setuptools==69.5.1" tensorflow scikit-learn hyperopt matplotlib numpy scipy
