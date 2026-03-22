@@ -55,7 +55,7 @@ X_test = pad_sequences(X_test, maxlen=maxlen)
 
 print(X_train.shape, X_val.shape, X_test.shape)
 
-# Build 4 Layer LTSM model
+# Build 4 Layer LSTM model
 def build_model(learning_rate=1e-3, dropout=0.2, units=64):
     model = Sequential([
         Embedding(input_dim=max_features, output_dim=embedding_dim, input_length=maxlen),
@@ -87,7 +87,7 @@ def evaluate_config(config, verbose=0):
     )
     # Time the model training
     start = time.time()
-    # Train model on test data over 5 epochs with early stopping
+    # Train model on training data over 5 epochs with early stopping
     history = model.fit(
         X_train, y_train,
         validation_data=(X_val, y_val),
@@ -199,6 +199,10 @@ print("Best Grid:", best_grid)
 print("Best Random:", best_random)
 print("Best Bayesian:", best_bayes)
 
+print(f"Grid evaluations: {len(grid_results)}")
+print(f"Random evaluations: {len(random_results)}")
+print(f"Bayesian evaluations: {len(bayes_results)}")
+
 # INS. Train final model with best overall config
 best_overall = max(all_results, key=lambda x: x["val_accuracy"])
 final_model = build_model(
@@ -256,4 +260,4 @@ for ax, (method_name, results) in zip(axes, methods):
 
 plt.suptitle("Validation Accuracy vs Trial Number", fontsize=14, fontweight='bold')
 plt.tight_layout()
-plt.show()
+plt.savefig("val_accuracy_vs_trial.png", dpi=150)
