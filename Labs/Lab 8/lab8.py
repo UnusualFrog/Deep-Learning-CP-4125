@@ -1,3 +1,4 @@
+# NOTE: Python Version 3.11.15 had to be used do to version issues with hyperopt
 import time
 import random
 import numpy as np
@@ -31,8 +32,10 @@ y_all = np.concatenate([y_train_full, y_test_full], axis=0)
 
 # INS. First choose a small subset
 subset_size = 6000
+# Randomize indexes of samples
 indices = np.arange(len(X_all))
 np.random.shuffle(indices)
+# Pick a subset of samples using randomized indicies
 indices = indices[:subset_size]
 X_small = [X_all[i] for i in indices]
 y_small = y_all[indices]
@@ -52,7 +55,7 @@ X_test = pad_sequences(X_test, maxlen=maxlen)
 
 print(X_train.shape, X_val.shape, X_test.shape)
 
-
+# Build 4 Layer LTSM model
 def build_model(learning_rate=1e-3, dropout=0.2, units=64):
     model = Sequential([
         Embedding(input_dim=max_features, output_dim=embedding_dim, input_length=maxlen),
@@ -60,6 +63,7 @@ def build_model(learning_rate=1e-3, dropout=0.2, units=64):
         Dropout(dropout),
         Dense(1, activation='sigmoid')
     ])
+    # Use Adam optimizer with crossentropy loss and accuracy
     model.compile(
         optimizer=Adam(learning_rate=learning_rate),
         loss='binary_crossentropy',
@@ -67,19 +71,23 @@ def build_model(learning_rate=1e-3, dropout=0.2, units=64):
     )
     return model
 
-
+# Build, train and evaluate model
 def evaluate_config(config, verbose=0):
+    # Build Model
     model = build_model(
         learning_rate=config["learning_rate"],
         dropout=config["dropout"],
         units=config["units"]
     )
+    # Set early stopping based on validation accuracy with tolerance for 2 runs without improvement
     early_stop = EarlyStopping(
         monitor="val_accuracy",
         patience=2,
         restore_best_weights=True
     )
+    # Time the model training
     start = time.time()
+    # Train model on test data over 5 epochs with early stopping
     history = model.fit(
         X_train, y_train,
         validation_data=(X_val, y_val),
@@ -101,6 +109,7 @@ grid = {
     "units": [32, 64]
 }
 
+# Run Grid Search with 8 possible combinations of parameters to maximize validation accuracy
 grid_results = []
 for config in ParameterGrid(grid):
     score, runtime = evaluate_config(config, verbose=0)
@@ -112,6 +121,10 @@ for config in ParameterGrid(grid):
     })
     print(config, score)
 
+# Total Grid Search Time
+total_grid_time = sum(r["runtime_sec"] for r in grid_results)
+print(f"Grid search total runtime: {total_grid_time:.1f}s")
+
 # INS. Random search
 search_space_random = {
     "learning_rate": [1e-4, 5e-4, 1e-3, 5e-3, 1e-2],
@@ -119,6 +132,7 @@ search_space_random = {
     "units": [32, 48, 64, 96, 128]
 }
 
+# Run random search over 8 iterations
 random_results = []
 samples = list(ParameterSampler(search_space_random, n_iter=8, random_state=SEED))
 for config in samples:
@@ -131,6 +145,10 @@ for config in samples:
     })
     print(config, score)
 
+# Total Random Search Time
+total_random_time = sum(r["runtime_sec"] for r in random_results)
+print(f"Random search total runtime: {total_random_time:.1f}s")
+
 # INS. Bayesian search
 bayes_results = []
 space = {
@@ -139,7 +157,7 @@ space = {
     "units": hp.choice("units", [32, 48, 64, 96, 128])
 }
 
-
+# Build, train and evaluate bayesian search
 def objective(params):
     config = {
         "learning_rate": float(params["learning_rate"]),
@@ -155,7 +173,7 @@ def objective(params):
     })
     return {"loss": -score, "status": STATUS_OK}
 
-
+# Run Bayesian search with a maximum of 10 iterations
 trials = Trials()
 best = fmin(
     fn=objective,
@@ -166,6 +184,10 @@ best = fmin(
     rstate=np.random.RandomState(SEED)  # changed from np.random.default_rng(SEED) to accomodate older version of hyperopt used
 )
 print(best)
+
+# Total Bayesian search time
+total_bayes_time = sum(r["runtime_sec"] for r in bayes_results)
+print(f"Bayesian search total runtime: {total_bayes_time:.1f}s")
 
 # INS. Collect and compare results
 all_results = grid_results + random_results + bayes_results
@@ -191,6 +213,7 @@ early_stop = EarlyStopping(
     restore_best_weights=True
 )
 
+# Train best model over 5 epochs with early stopping
 final_model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
@@ -200,5 +223,37 @@ final_model.fit(
     callbacks=[early_stop]
 )
 
+# Capture best model test loss and test accuracy
 test_loss, test_acc = final_model.evaluate(X_test, y_test, verbose=0)
 print("Final test accuracy:", test_acc)
+
+# Plot validation accuracy vs trial number
+fig, axes = plt.subplots(1, 3, figsize=(15, 5), sharey=True)
+
+# Get results of all three methods
+methods = [
+    ("Grid Search", grid_results),
+    ("Random Search", random_results),
+    ("Bayesian Search", bayes_results)
+]
+
+# For each method, plot trial number, current accuracy, and best overall accuracy
+for ax, (method_name, results) in zip(axes, methods):
+    accuracies = [r["val_accuracy"] for r in results]
+    trial_numbers = list(range(1, len(accuracies) + 1))
+    best_so_far = [max(accuracies[:i+1]) for i in range(len(accuracies))]
+
+    ax.plot(trial_numbers, accuracies, marker='o', linestyle='--',
+            color='steelblue', label='Val Accuracy', alpha=0.7)
+    ax.plot(trial_numbers, best_so_far, marker='', linestyle='-',
+            color='crimson', label='Best So Far')
+    ax.set_title(method_name)
+    ax.set_xlabel("Trial Number")
+    ax.set_ylabel("Validation Accuracy")
+    ax.set_xticks(trial_numbers)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+plt.suptitle("Validation Accuracy vs Trial Number", fontsize=14, fontweight='bold')
+plt.tight_layout()
+plt.show()
